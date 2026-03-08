@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  jupyter:
+    image: quay.io/jupyter/scipy-notebook:python-3.13
+    container_name: jupyter_datascience
+    restart: unless-stopped
+    
+    ports:
+      - "127.0.0.1:8889:8888"    # JupyterLab (primary) - localhost only
+      # - "8888:8888"  # Classic Notebook (optional)
+    
+    volumes:
+      # Mount local directories to container
+      - ../notebooks:/home/jovyan/work
+      - ../data:/home/jovyan/data
+      - ../src:/home/jovyan/src
+      - ../models:/home/jovyan/models
+      - ../logs:/home/jovyan/logs
+    
+    # Create symlinks from /home/jovyan/ to /home/hirakusan/
+    # This allows using /home/hirakusan/ paths while data is mounted at /home/jovyan/
+    command: >
+      bash -c "mkdir -p /home/hirakusan &&
+      ln -sf /home/jovyan/work /home/hirakusan/work &&
+      ln -sf /home/jovyan/data /home/hirakusan/data &&
+      ln -sf /home/jovyan/src /home/hirakusan/src &&
+      ln -sf /home/jovyan/models /home/hirakusan/models &&
+      ln -sf /home/jovyan/logs /home/hirakusan/logs &&
+      start-notebook.sh"
+    
+    environment:
+      # Jupyter Configuration
+      - JUPYTER_ENABLE_LAB=yes
+      
+      # Authentication
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN}
+      # - JUPYTER_PASSWORD=${JUPYTER_PASSWORD}
+      
+      # User Configuration
+      - NB_USER=hirakusan
+      - NB_UID=1000
+      - NB_GID=1000
+      - GRANT_SUDO=no
+      - NB_WORKDIR=/home/hirakusan/work
+      
+      # Environment
+      - TZ=${TZ:-Asia/Jakarta}
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/lab"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Resource limits (optional - uncomment to enable)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 8G
+    #       cpus: '4'
+    #     reservations:
+    #       memory: 2G
+    #       cpus: '1'
+    
+    # Network configuration
+    networks:
+      - jupyter_network
+
+networks:
+  jupyter_network:
+    driver: bridge
+
+# Volume definitions (for reference)
+# volumes:
+#   notebooks:
+#     driver: local
+#   data:
+#     driver: local
+#   models:
+#     driver: local
+#   logs:
+#     driver: local

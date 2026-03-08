@@ -1,0 +1,205 @@
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Secrets and credentials
+*.key
+*.pem
+*.crt
+*.csr
+credentials.json
+secrets/
+*.secret
+
+# =============================================================================
+# Docker
+# =============================================================================
+
+# Docker compose
+docker-compose.override.yml
+
+# Container logs
+*.log
+
+# Docker volume data
+volumes/
+
+# =============================================================================
+# Data & Notebooks
+# =============================================================================
+
+# Data files (keep structure but ignore contents)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/intermediate/*
+!data/intermediate/.gitkeep
+
+# Models
+models/checkpoints/*
+!models/checkpoints/.gitkeep
+models/trained/*
+!models/trained/.gitkeep
+
+# Notebooks (optional - uncomment if you want to commit notebooks)
+# notebooks/*.ipynb
+# !notebooks/.gitkeep
+
+# Checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Execution logs
+logs/*.log
+logs/execution/*
+!logs/execution/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# TensorBoard
+tensorboard_logs/
+
+# =============================================================================
+# Python
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# =============================================================================
+# IDE
+# =============================================================================
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# IDEs
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# =============================================================================
+# Backup files
+# =============================================================================
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+
+# Backup directories
+backups/
+backup-*.tar.gz
+
+# =============================================================================
+# OS
+# =============================================================================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.fuse_hidden*
+.DS_Store
+.Trash-*
+
+# =============================================================================
+# Misc
+# =============================================================================
+
+# Temporary files
+*.temp
+*.cache
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# JupyterLab
+.jupyterlab/
+.lab/
+workspace/
