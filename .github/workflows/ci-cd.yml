@@ -702,11 +702,68 @@ jobs:
           
           echo "**Pipeline completed at:** $(date)" >> $GITHUB_STEP_SUMMARY
 
-      - name: Send final notification
+      - name: Send Slack notification
         if: github.event_name == 'push'
         run: |
-          # Send notification to Slack/Email
-          # curl -X POST -H 'Content-type: application/json' \
-          #   --data '{"text":"Pipeline completed: ${{ job.status }}"}' \
-          #   ${{ secrets.SLACK_WEBHOOK }}
-          echo "Notification sent (configure Slack/Email webhook in secrets)"
+          # Determine emoji based on pipeline status
+          STATUS_EMOJI="❌"
+          if [ "${{ needs.notify.result }}" == "success" ]; then
+            STATUS_EMOJI="✅"
+          fi
+
+          # Send notification to Slack
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "text": "$STATUS_EMOJI Pipeline ${{ job.status }}: ${{ github.repository }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "$STATUS_EMOJI CI/CD Pipeline Result"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ needs.notify.result }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n${{ github.sha }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
