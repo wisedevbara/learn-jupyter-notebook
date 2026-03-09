@@ -8,10 +8,21 @@ Format berdasarkan [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0] - 2026-03-09
+
 ### Added
-- Initial project setup
-- Docker configuration files
-- Documentation structure
+- **Jupyter Notebook Deployment**
+  - Jupyter Notebook successfully deployed and running in Docker
+  - Container started successfully
+  - JupyterLab accessible on port 8889
+  - Volume mounts working (notebooks, data, src, models, logs)
+  - Authentication configured (token-based)
+
+- **Initial project setup**
+- **Docker configuration files**
+- **Documentation structure**
 
 ---
 

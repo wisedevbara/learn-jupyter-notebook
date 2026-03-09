@@ -34,16 +34,15 @@ echo -e "${GREEN}✓ Docker is running${NC}"
 echo ""
 
 # Check if .env file exists
-if [ ! -f "docker/.env" ]; then
+if [ ! -f ".env" ]; then
     echo -e "${YELLOW}Creating .env file from example...${NC}"
-    cp docker/.env.example docker/.env
-    echo -e "${YELLOW}Please edit docker/.env with your JUPYTER_TOKEN${NC}"
+    cp docker/.env.example .env
+    echo -e "${YELLOW}Please edit .env with your JUPYTER_TOKEN${NC}"
     echo ""
 fi
 
 # Pull latest image
 echo -e "${YELLOW}Pulling latest image...${NC}"
-cd docker
 docker-compose pull
 echo ""
 
@@ -62,7 +61,7 @@ echo -e "${YELLOW}Waiting for JupyterLab to start...${NC}"
 sleep 5
 
 # Get token from .env
-TOKEN=$(grep JUPYTER_TOKEN docker/.env | cut -d '=' -f2)
+TOKEN=$(grep JUPYTER_TOKEN .env | cut -d '=' -f2)
 
 echo ""
 echo -e "${GREEN}========================================${NC}"

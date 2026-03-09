@@ -28,7 +28,7 @@ cd python_jupyter_notebook
 
 2. Setup environment variables:
 ```bash
-cp docker/.env.example docker/.env
+cp docker/.env.example .env
 # Edit .env dengan nilai yang sesuai
 ```
 
@@ -51,10 +51,10 @@ docker-compose down
 
 ```
 python_jupyter_notebook/
+├── docker-compose.yml    # Docker Compose configuration
 ├── docker/              # Konfigurasi Docker
-│   ├── docker-compose.yml
 │   ├── Dockerfile
-│   └── .env
+│   └── .env.example
 ├── data/               # Data files
 │   ├── raw/           # Data mentah
 │   ├── processed/    # Data yang sudah diolah
@@ -161,8 +161,7 @@ pytest tests/ --cov=src --cov-report=html
 bandit -r src/
 
 # Build Docker image
-cd docker
-docker build -t jupyter-datascience:latest -f Dockerfile ..
+docker build -t jupyter-datascience:latest -f docker/Dockerfile .
 
 # Run container
 docker run -d -p 8889:8888 -e JUPYTER_TOKEN=dev-token jupyter-datascience:latest

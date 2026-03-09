@@ -84,7 +84,7 @@ CMD ["start-notebook.sh"]
 
 ## 2. Docker Compose Configuration
 
-### File: `docker/docker-compose.yml`
+### File: `docker-compose.yml`
 
 ```yaml
 version: '3.8'

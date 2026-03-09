@@ -20,38 +20,38 @@ NC := \033[0m # No Color
 # Start container
 up:
 	@echo "$(GREEN)Starting Jupyter container...$(NC)"
-	cd docker && docker-compose up -d
+	docker-compose up -d
 	@echo "$(GREEN)JupyterLab available at: http://localhost:8889$(NC)"
 	@echo "$(GREEN)Token: Check docker/.env file$(NC)"
 
 # Stop container
 down:
 	@echo "$(YELLOW)Stopping Jupyter container...$(NC)"
-	cd docker && docker-compose down
+	docker-compose down
 
 # Restart container
 restart:
 	@echo "$(YELLOW)Restarting Jupyter container...$(NC)"
-	cd docker && docker-compose restart
+	docker-compose restart
 
 # View logs
 logs:
-	cd docker && docker-compose logs --tail=100
+	docker-compose logs --tail=100
 
 # Follow logs
 logs-follow:
-	cd docker && docker-compose logs -f
+	docker-compose logs -f
 
 # Build container
 build:
 	@echo "$(GREEN)Building container...$(NC)"
-	cd docker && docker-compose build --no-cache
+	docker-compose build --no-cache
 
 # Rebuild container (pull latest image)
 rebuild:
 	@echo "$(GREEN)Rebuilding container with latest image...$(NC)"
-	cd docker && docker-compose pull
-	cd docker && docker-compose up -d --build
+	docker-compose pull
+	docker-compose up -d --build
 
 # Clean up
 clean:

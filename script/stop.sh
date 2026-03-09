@@ -13,6 +13,5 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Stopping Jupyter container...${NC}"
-cd docker
 docker-compose down
 echo -e "${GREEN}✓ Container stopped${NC}"

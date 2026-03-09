@@ -12,11 +12,12 @@ services:
     
     volumes:
       # Mount local directories to container
-      - ../notebooks:/home/jovyan/work
-      - ../data:/home/jovyan/data
-      - ../src:/home/jovyan/src
-      - ../models:/home/jovyan/models
-      - ../logs:/home/jovyan/logs
+      # Create symlinks from /home/jovyan/ to /home/hirakusan/
+      - ./notebooks:/home/jovyan/work
+      - ./data:/home/jovyan/data
+      - ./src:/home/jovyan/src
+      - ./models:/home/jovyan/models
+      - ./logs:/home/jovyan/logs
     
     # Create symlinks from /home/jovyan/ to /home/hirakusan/
     # This allows using /home/hirakusan/ paths while data is mounted at /home/jovyan/
@@ -29,6 +30,9 @@ services:
       ln -sf /home/jovyan/logs /home/hirakusan/logs &&
       start-notebook.sh"
     
+    env_file:
+      - .env
+    
     environment:
       # Jupyter Configuration
       - JUPYTER_ENABLE_LAB=yes
@@ -37,7 +41,7 @@ services:
       - JUPYTER_TOKEN=${JUPYTER_TOKEN}
       # - JUPYTER_PASSWORD=${JUPYTER_PASSWORD}
       
-      # User Configuration
+      # User Configuration (hirakusan - UID 1000)
       - NB_USER=hirakusan
       - NB_UID=1000
       - NB_GID=1000
@@ -74,14 +78,3 @@ services:
 networks:
   jupyter_network:
     driver: bridge
-
-# Volume definitions (for reference)
-# volumes:
-#   notebooks:
-#     driver: local
-#   data:
-#     driver: local
-#   models:
-#     driver: local
-#   logs:
-#     driver: local
