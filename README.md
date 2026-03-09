@@ -123,6 +123,99 @@ make clean     # Remove container dan volumes
 
 Lihat [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) untuk solusi masalah umum.
 
+---
+
+## CI/CD Pipeline
+
+Proyek ini menggunakan GitHub Actions untuk otomatisasi CI/CD.
+
+### Pipeline Stages
+
+| Stage | Description | Tools |
+|-------|-------------|-------|
+| Setup | Environment preparation | Python 3.13, Docker |
+| Test | Unit tests with coverage | pytest, coverage |
+| Security | Code & container scanning | Bandit, Trivy, Grype |
+| Build | Docker image build | Docker Buildx |
+| Integration | Container testing | Docker |
+| Registry | Push to registry | GHCR, Docker Hub |
+| Staging | Deploy to staging | Manual |
+| Production | Deploy to production | Manual approval |
+
+### Menjalankan Pipeline
+
+#### Local Development
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd python_jupyter_notebook
+
+# Install dependencies
+pip install -r requirements/dev.txt
+
+# Run tests locally
+pytest tests/ --cov=src --cov-report=html
+
+# Security scan
+bandit -r src/
+
+# Build Docker image
+cd docker
+docker build -t jupyter-datascience:latest -f Dockerfile ..
+
+# Run container
+docker run -d -p 8889:8888 -e JUPYTER_TOKEN=dev-token jupyter-datascience:latest
+```
+
+#### GitHub Actions
+
+Pipeline berjalan otomatis pada:
+- Push ke branch `main` atau `develop`
+- Pull request ke `main`
+- Manual trigger via GitHub UI
+
+```bash
+# Manual trigger via CLI
+gh workflow run ci-cd.yml -f environment=staging
+```
+
+### Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| GITHUB_TOKEN | GitHub token | Yes (auto) |
+| DOCKERHUB_USERNAME | Docker Hub username | No |
+| DOCKERHUB_PASSWORD | Docker Hub password | No |
+| SLACK_WEBHOOK | Slack notification | No |
+
+### Artifacts
+
+Pipeline menghasilkan artifact:
+- `bandit-report.json` - Code security scan results
+- `trivy-report.json` - Container vulnerability scan
+- `grype-report.json` - Additional vulnerability assessment
+- `coverage.xml` - Test coverage reports
+
+### Deployment Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Commit    │────▶│    Test     │────▶│   Security  │
+└─────────────┘     └─────────────┘     └─────────────┘
+                                                │
+                                                ▼
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Production  │◀────│  Approval   │◀────│  Staging    │
+│   (Manual)  │     │   Gate      │     │  Deploy     │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │
+       ▼
+┌─────────────┐
+│   Rollback  │ (on failure)
+└─────────────┘
+```
+
 ## Lisensi
 
 Lihat [LICENSE](LICENSE) untuk detail.

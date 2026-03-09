@@ -1,0 +1,31 @@
+# Machine Learning & Deep Learning Packages
+# Additional packages for ML/DL workflows
+#
+# NOTE: Install as needed based on requirements:
+#   conda install -c conda-forge tensorflow pytorch xgboost lightgbm
+#   pip install tensorflow pytorch xgboost lightgbm
+#
+
+# Deep Learning Frameworks
+tensorflow>=2.15.0
+keras>=3.0.0
+pytorch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+
+# Gradient Boosting Libraries
+xgboost>=2.0.0
+lightgbm>=4.1.0
+catboost>=1.2.0
+
+# Time Series Forecasting
+prophet>=1.1.0
+pmdarima>=2.0.0
+
+# AutoML
+auto-sklearn>=0.15.0
+flaml>=2.0.0
+
+# Reinforcement Learning
+gym>=0.26.0
+stable-baselines3>=2.0.0

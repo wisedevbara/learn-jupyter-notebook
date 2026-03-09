@@ -1,0 +1,187 @@
+# =============================================================================
+# Docker Hub Configuration for GitHub Actions
+# =============================================================================
+# File ini digunakan untuk mengkonfigurasi Docker Hub login dalam CI/CD pipeline
+#
+# CARA PENGGUNAAN:
+# 1. Tambahkan secrets di GitHub Repository Settings:
+#    - DOCKER_USERNAME: Username Docker Hub Anda
+#    - DOCKER_PASSWORD: Password Docker Hub Anda
+#
+# 2. Repository: https://github.com/username/repo-name/settings/secrets
+#
+# =============================================================================
+
+# Konfigurasi Docker Hub Login
+# ---------------------------------------------------------------------
+
+name: Docker Hub Configuration
+
+# Variabel yang diperlukan (tambahkan di GitHub Secrets)
+env:
+  # GANTI: Username Docker Hub Anda
+  # Tambahkan di: Repository Settings → Secrets and variables → Actions
+  # Secret name: DOCKER_USERNAME
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
+  # GANTI: Password Docker Hub Anda  
+  # Tambahkan di: Repository Settings → Secrets and variables → Actions
+  # Secret name: DOCKER_PASSWORD
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
+  # Docker Hub Repository Name (opsional, default: username/image-name)
+  # GANTI: Nama repository yang ingin Anda push
+  DOCKER_REPOSITORY: your-dockerhub-username/jupyter-datascience
+
+  # Docker Hub Tags (opsional)
+  # Format: latest, v1.0.0, {{github.sha}}
+  DOCKER_TAGS: |
+    latest
+    ${{ github.sha }}
+    ${{ github.ref_name }}
+
+
+# =============================================================================
+# DOCKER HUB LOGIN JOB
+# =============================================================================
+# Job ini digunakan untuk login ke Docker Hub
+# Dipanggil oleh job lain menggunakan: needs: [docker-login]
+# =============================================================================
+
+jobs:
+  login:
+    name: Login to Docker Hub
+    runs-on: ubuntu-latest
+    outputs:
+      logged_in: ${{ steps.login.outputs.success }}
+    steps:
+      - name: Check if credentials exist
+        id: check
+        run: |
+          if [ -z "${{ secrets.DOCKER_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            echo "Docker Hub credentials not configured"
+            echo "logged_in=false" >> $GITHUB_OUTPUT
+          else
+            echo "logged_in=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to Docker Hub
+        if: steps.check.outputs.logged_in == 'true'
+        id: login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+        continue-on-error: true
+
+      - name: Set login status
+        run: |
+          if [ "${{ steps.check.outputs.logged_in }}" == "true" ]; then
+            echo "✅ Successfully logged in to Docker Hub"
+          else
+            echo "⚠️ Docker Hub login skipped - credentials not configured"
+          fi
+
+
+# =============================================================================
+# BUILD AND PUSH JOB
+# =============================================================================
+# Job untuk build dan push image ke Docker Hub
+# =============================================================================
+
+  build-and-push:
+    name: Build and Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [login]
+    if: needs.login.outputs.logged_in == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ secrets.DOCKER_USERNAME }}/jupyter-datascience
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show pushed image
+        run: |
+          echo "✅ Image pushed to Docker Hub"
+          echo "Tags: ${{ steps.meta.outputs.tags }}"
+
+
+# =============================================================================
+# DOCKER HUB PUSH (SIMPLE VERSION)
+# =============================================================================
+# Contoh penggunaan yang lebih sederhana dalam workflow utama:
+#
+# steps:
+#   - name: Login to Docker Hub
+#     uses: docker/login-action@v3
+#     with:
+#       username: ${{ secrets.DOCKER_USERNAME }}
+#       password: ${{ secrets.DOCKER_PASSWORD }}
+#
+#   - name: Build and push
+#     uses: docker/build-push-action@v5
+#     with:
+#       context: .
+#       file: docker/Dockerfile
+#       push: ${{ github.event_name != 'pull_request' }}
+#       tags: ${{ secrets.DOCKER_USERNAME }}/jupyter-datascience:latest
+#
+# =============================================================================
+
+
+# =============================================================================
+# CATATAN PENTING
+# =============================================================================
+#
+# 1. TAMBAHKAN SECRETS DI GITHUB:
+#    Repository → Settings → Secrets and variables → Actions → New repository secret
+#
+#    Secrets yang diperlukan:
+#    - Name: DOCKER_USERNAME
+#      Value: (your Docker Hub username)
+#
+#    - Name: DOCKER_PASSWORD  
+#      Value: (your Docker Hub password OR access token)
+#
+# 2. DOCKER HUB ACCESS TOKEN (DISARANKAN):
+#    Lebih aman menggunakan access token daripada password langsung:
+#    - Buka: https://hub.docker.com/settings/security
+#    - Klik: New Access Token
+#    - Copy token dan gunakan sebagai DOCKER_PASSWORD
+#
+# 3. VISIBILITY:
+#    Pastikan repository Docker Hub Anda sesuai:
+#    - Public: Siapa pun bisa pull
+#    - Private: Hanya Anda yang bisa pull (harus login)
+#
+# =============================================================================

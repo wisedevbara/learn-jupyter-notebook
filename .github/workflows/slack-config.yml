@@ -1,0 +1,247 @@
+# =============================================================================
+# Slack Notification Configuration for GitHub Actions
+# =============================================================================
+# File ini digunakan untuk mengkonfigurasi notifikasi Slack dalam CI/CD pipeline
+#
+# CARA PENGGUNAAN:
+# 1. Buat Slack Incoming Webhook:
+#    - Buka: https://api.slack.com/messaging/webhooks
+#    - Pilih channel tujuan
+#    - Copy webhook URL
+#
+# 2. Tambahkan secrets di GitHub Repository Settings:
+#    - SLACK_WEBHOOK_URL: URL webhook Slack Anda
+#    - SLACK_CHANNEL: (opsional) Channel tujuan
+#
+# 3. Repository: https://github.com/username/repo-name/settings/secrets
+#
+# =============================================================================
+
+# Konfigurasi Slack
+# ---------------------------------------------------------------------
+name: Slack Notification Configuration
+
+# Variabel yang diperlukan (tambahkan di GitHub Secrets)
+env:
+  # GANTI: Webhook URL dari Slack
+  # Tambahkan di: Repository Settings → Secrets and variables → Actions
+  # Secret name: SLACK_WEBHOOK_URL
+  # Contoh: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXX
+  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # GANTI: Nama channel Slack (opsional, tanpa #)
+  # Contoh: #ci-cd, #deployments, #alerts
+  # Secret name: SLACK_CHANNEL
+  SLACK_CHANNEL: ${{ secrets.SLACK_CHANNEL }}
+
+
+# =============================================================================
+# SLACK NOTIFICATION JOB
+# =============================================================================
+
+jobs:
+  notify:
+    name: Send Slack Notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if webhook is configured
+        id: check
+        run: |
+          if [ -z "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            echo "Slack webhook not configured"
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      # Notify on workflow start
+      - name: Notify Workflow Started
+        if: steps.check.outputs.configured == 'true'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,ref
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+
+# =============================================================================
+# CONTOH PENGGUNAAN LEBIH DETAIL
+# =============================================================================
+
+# Contoh notifikasi kustom:
+# ---------------------------------------------------------------------
+jobs:
+  custom-notify:
+    name: Custom Slack Notification
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check webhook
+        id: check
+        run: |
+          if [ -z "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      # Custom notification on success
+      - name: Notify Success
+        if: steps.check.outputs.configured == 'true' && job.status == 'success'
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "channel": "${{ secrets.SLACK_CHANNEL }}",
+              "text": "✅ Deployment Berhasil!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "✅ Deployment Berhasil!"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Repository:*\n${{ github.repository }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ github.ref_name }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n${{ github.sha }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Author:*\n${{ github.actor }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # Custom notification on failure
+      - name: Notify Failure
+        if: steps.check.outputs.configured == 'true' && job.status == 'failure'
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "channel": "${{ secrets.SLACK_CHANNEL }}",
+              "text": "❌ Deployment Gagal!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "❌ Deployment Gagal!"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Mohon periksa workflow GitHub Actions untuk detail error."
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Failed Workflow"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "style": "danger"
+                    }
+                  ]
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
+
+
+# =============================================================================
+# SIMPLE SLACK NOTIFICATION (DALAM WORKFLOW UTAMA)
+# =============================================================================
+# Tambahkan di job yang diinginkan:
+#
+# - name: Send Slack Notification
+#   if: always()
+#   uses: 8398a7/action-slack@v3
+#   with:
+#     status: ${{ job.status }}
+#     fields: repo,message,commit,author,ref,workflow
+#   env:
+#     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+#
+# =============================================================================
+
+
+# =============================================================================
+# CATATAN PENTING
+# =============================================================================
+#
+# 1. BUAT SLACK WEBHOOK:
+#    a. Buka https://api.slack.com/messaging/webhooks
+#    b. Klik "Create New App" → From scratch
+#    c. Beri nama, pilih workspace
+#    d. Klik "Incoming Webhooks" → Activate
+#    e. Klik "Add New Webhook to Workspace"
+#    f. Pilih channel → Copy URL
+#
+# 2. TAMBAHKAN SECRETS DI GITHUB:
+#    Repository → Settings → Secrets and variables → Actions → New repository secret
+#
+#    Secrets yang diperlukan:
+#    - Name: SLACK_WEBHOOK_URL
+#      Value: (URL webhook dari langkah 1)
+#
+#    Secrets opsional:
+#    - Name: SLACK_CHANNEL
+#      Value: (nama channel, misal: #deployments)
+#
+# 3. JENIS NOTIFIKASI YANG BISA DIKIRIM:
+#    - Workflow started
+#    - Workflow completed
+#    - Deployment success
+#    - Deployment failure
+#    - Test results
+#    - Security scan results
+#    - Custom messages
+#
+# 4. FORMAT BLOCKS (SLACK):
+#    Menggunakan Slack Block Kit untuk pesan yang lebih menarik:
+#    - Headers
+#    - Sections dengan fields
+#    - Buttons dengan actions
+#    - Dividers
+#    - dll
+#
+# =============================================================================

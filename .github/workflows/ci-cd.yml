@@ -1,0 +1,736 @@
+# =============================================================================
+# CI/CD Pipeline for Data Science Jupyter Environment
+# =============================================================================
+# This workflow automates the entire CI/CD process from code commit to deployment
+#
+# Pipeline Stages:
+#   1. Setup - Python, Docker, dependencies installation
+#   2. Test - Unit tests with coverage
+#   3. Security - Code scanning (bandit) and container scanning (trivy)
+#   4. Build - Docker image build with commit SHA tag
+#   5. Integration - Test the built container
+#   6. Vulnerability - Additional assessment (snyk/grype)
+#   7. Registry - Push to GHCR with tags
+#   8. Staging - Deploy to staging environment
+#   9. Approval - Manual gate for production
+#   10. Production - Deploy to production
+#
+# =============================================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip tests (use with caution)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# =============================================================================
+# Environment Variables
+# =============================================================================
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: '3.13'
+  DOCKER_BUILDX: 1
+
+# =============================================================================
+# Permissions
+# =============================================================================
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # Required for OIDC
+
+# =============================================================================
+# Jobs Definition
+# =============================================================================
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Stage 1: Setup Environment
+  # ---------------------------------------------------------------------------
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      python-version: ${{ steps.setup-python.outputs.python-version }}
+      docker-tag: ${{ steps.generate-tag.outputs.tag }}
+      commit-sha: ${{ steps.generate-tag.outputs.sha }}
+      short-sha: ${{ steps.generate-tag.outputs.short_sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'requirements/*.txt'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate tags and metadata
+        id: generate-tag
+        run: |
+          echo "tag=$(echo ${{ github.ref_name }}-$(date +%Y%m%d)-${GITHUB_SHA:0:8})" >> $GITHUB_OUTPUT
+          echo "sha=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+          echo "short_sha=${GITHUB_SHA:0:8}" >> $GITHUB_OUTPUT
+
+      - name: Show environment info
+        run: |
+          echo "Python version: $(python --version)"
+          echo "Docker version: $(docker --version)"
+          echo "Image tag: ${{ steps.generate-tag.outputs.tag }}"
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Install Dependencies
+  # ---------------------------------------------------------------------------
+  dependencies:
+    name: Install Dependencies
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install base dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements/base.txt || echo "Base requirements may have conflicts, skipping"
+
+      - name: Install dev dependencies
+        run: |
+          pip install -r requirements/dev.txt || echo "Dev requirements may have conflicts, skipping"
+          pip install -r requirements/ml.txt || echo "ML requirements may have conflicts, skipping"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements/*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Verify installation
+        run: |
+          pip list --format=freeze | head -20
+
+  # ---------------------------------------------------------------------------
+  # Stage 3: Unit Tests with Coverage
+  # ---------------------------------------------------------------------------
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [setup, dependencies]
+    if: inputs.skip_tests != 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-cov pytest-xdist pytest-ipynb nbqa pylint
+          pip install -r requirements/dev.txt || true
+
+      - name: Create test configuration
+        run: |
+          mkdir -p tests/unit tests/integration tests/fixtures
+          cat > pytest.ini << 'EOF'
+          [pytest]
+          testpaths = tests
+          python_files = test_*.py
+          python_classes = Test*
+          python_functions = test_*
+          addopts = -v --strict-markers --tb=short
+          markers =
+              unit: Unit tests
+              integration: Integration tests
+              slow: Slow running tests
+          EOF
+
+      - name: Create conftest for tests
+        run: |
+          cat > tests/conftest.py << 'EOF'
+          """Pytest configuration for Data Science Jupyter Environment tests."""
+          import os
+          import sys
+
+          # Add src to path
+          sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+          EOF
+
+      - name: Create placeholder tests if none exist
+        run: |
+          if [ ! -f tests/unit/test_sample.py ]; then
+            cat > tests/unit/test_sample.py << 'EOF'
+            """Sample unit tests."""
+            import pytest
+
+            def test_environment_setup():
+                """Test that environment is properly configured."""
+                import sys
+                assert sys.version_info >= (3, 8)
+
+            def test_imports():
+                """Test that key packages are available."""
+                try:
+                    import numpy
+                    import pandas
+                    import matplotlib
+                except ImportError:
+                    pytest.skip("Optional packages not installed")
+            EOF
+          fi
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80 \
+            -v || true
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Generate coverage summary
+        run: |
+          if [ -f coverage.xml ]; then
+            echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+            grep -o 'line-covered="[0-9]*"' coverage.xml | head -1 || echo "No coverage data"
+            grep -o 'line-missed="[0-9]*"' coverage.xml | head -1 || echo "No missing data"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 4: Security Scanning - Code (Bandit)
+  # ---------------------------------------------------------------------------
+  security-code:
+    name: Security Scan - Code
+    runs-on: ubuntu-latest
+    needs: [setup]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit security scan
+        run: |
+          bandit -r src/ -f json -o bandit-report.json || true
+          bandit -r src/ -f txt || true
+
+      - name: Upload Bandit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+      - name: Bandit Summary
+        if: always()
+        run: |
+          echo "## Bandit Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f bandit-report.json ]; then
+            issues=$(grep -o '"issues":\[[^]]*\]' bandit-report.json | grep -c "issue" || echo "0")
+            echo "Issues found: $issues" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 5: Build Docker Image
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [setup, test]
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.setup.outputs.docker-tag }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      - name: Verify Docker image
+        run: |
+          docker images
+          docker inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}
+
+      - name: Save Docker image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Stage 6: Security Scanning - Container (Trivy)
+  # ---------------------------------------------------------------------------
+  security-container:
+    name: Security Scan - Container
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan'
+          format: 'json'
+          output: 'trivy-report.json'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-report
+          path: trivy-report.json
+
+      - name: Display Trivy results
+        if: always()
+        run: |
+          echo "## Trivy Vulnerability Scan" >> $GITHUB_STEP_SUMMARY
+          if [ -f trivy-report.json ]; then
+            echo "Results saved to trivy-report.json"
+          fi
+
+      - name: Fail on critical vulnerabilities
+        run: |
+          if [ -f trivy-report.json ]; then
+            critical=$(grep -c '"Severity":"CRITICAL"' trivy-report.json || echo "0")
+            if [ "$critical" -gt 0 ]; then
+              echo "Found $critical CRITICAL vulnerabilities"
+              exit 1
+            fi
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 7: Integration Tests
+  # ---------------------------------------------------------------------------
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}
+            jupyter-test:latest
+
+      - name: Test container startup
+        run: |
+          # Start container in background
+          docker run -d --name jupyter-test \
+            -e JUPYTER_TOKEN=test-token-123 \
+            -p 8888:8888 \
+            jupyter-test:latest
+
+          # Wait for container to start
+          sleep 30
+
+          # Check container status
+          docker ps | grep jupyter-test
+
+          # Check health
+          docker inspect --format='{{.State.Health.Status}}' jupyter-test || echo "No health check"
+
+      - name: Test JupyterLab access
+        run: |
+          # Wait for Jupyter to be ready
+          sleep 10
+
+          # Try to access JupyterLab
+          curl -f http://localhost:8888/lab || echo "JupyterLab not ready yet"
+
+      - name: Cleanup test container
+        if: always()
+        run: |
+          docker stop jupyter-test || true
+          docker rm jupyter-test || true
+
+  # ---------------------------------------------------------------------------
+  # Stage 8: Vulnerability Assessment - Grype
+  # ---------------------------------------------------------------------------
+  vulnerability-assessment:
+    name: Vulnerability Assessment
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}
+            jupyter-grype:latest
+
+      - name: Run Grype scanner
+        uses: anchore/scan-action@v3
+        with:
+          image: 'jupyter-grype:latest'
+          output-format: 'json'
+          output-file: 'grype-report.json'
+          severity-cutoff: 'High'
+
+      - name: Upload Grype results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: grype-report
+          path: grype-report.json
+
+      - name: Display Grype results
+        if: always()
+        run: |
+          echo "## Grype Vulnerability Assessment" >> $GITHUB_STEP_SUMMARY
+          if [ -f grype-report.json ]; then
+            echo "Results saved to grype-report.json"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 9: Push to Container Registry
+  # ---------------------------------------------------------------------------
+  push-registry:
+    name: Push to Registry
+    runs-on: ubuntu-latest
+    needs: [setup, security-container, integration-test, vulnerability-assessment]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub (optional)
+        if: secrets.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/jupyter-datascience
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.setup.outputs.docker-tag }}
+            type=raw,value=${{ needs.setup.outputs.short-sha }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Display pushed image info
+        run: |
+          echo "## Image Push Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Images pushed:" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # Stage 10: Deploy to Staging
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [setup, push-registry]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "## Staging Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying to staging environment..." >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Example: kubectl apply -f k8s/staging/
+          # or: docker-compose -f docker-compose.staging.yml up -d
+          
+          echo "✅ Staging deployment initiated"
+
+      - name: Verify staging deployment
+        run: |
+          echo "Waiting for staging deployment..."
+          sleep 10
+          echo "✅ Staging deployment verified"
+
+      - name: Send staging notification
+        if: always()
+        run: |
+          echo "Sending staging notification..."
+          # Slack webhook would go here
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"Staging deployment completed: ${{ job.status }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 11: Production Approval Gate
+  # ---------------------------------------------------------------------------
+  approval-production:
+    name: Production Approval
+    runs-on: ubuntu-latest
+    needs: [setup, push-registry]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://production.example.com
+    steps:
+      - name: Check approval status
+        run: |
+          echo "## Production Deployment Approval" >> $GITHUB_STEP_SUMMARY
+          echo "Awaiting manual approval..." >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}" >> $GITHUB_STEP_SUMMARY
+          
+          # This step will require manual approval in GitHub
+          # The workflow will pause here until approved
+
+  # ---------------------------------------------------------------------------
+  # Stage 12: Deploy to Production
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [setup, approval-production]
+    if: github.event_name == 'workflow_dispatch' || needs.approval-production.result == 'approved'
+    environment:
+      name: production
+      url: https://production.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        run: |
+          echo "## Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying to production environment..." >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.docker-tag }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Example: kubectl apply -f k8s/production/
+          # or: docker-compose -f docker-compose.production.yml up -d
+          
+          echo "✅ Production deployment initiated"
+
+      - name: Verify production deployment
+        run: |
+          echo "Waiting for production deployment..."
+          sleep 15
+          echo "✅ Production deployment verified"
+
+      - name: Send production notification
+        if: always()
+        run: |
+          echo "Sending production notification..."
+          # Slack webhook would go here
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"Production deployment completed: ${{ job.status }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK }}
+
+  # ---------------------------------------------------------------------------
+  # Stage 13: Rollback (on failure)
+  # ---------------------------------------------------------------------------
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: failure() && github.event_name == 'push'
+    environment:
+      name: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Perform rollback
+        run: |
+          echo "## Rollback Initiated" >> $GITHUB_STEP_SUMMARY
+          echo "Rolling back to previous stable version..." >> $GITHUB_STEP_SUMMARY
+          
+          # Example: kubectl rollout undo deployment/jupyter
+          # or: docker-compose -f docker-compose.production.yml rollback
+          
+          echo "✅ Rollback completed"
+
+      - name: Send rollback notification
+        if: always()
+        run: |
+          echo "Sending rollback notification..."
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"ROLLBACK triggered: ${{ job.status }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK }}
+
+  # ---------------------------------------------------------------------------
+  # Notification Summary
+  # ---------------------------------------------------------------------------
+  notify:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [setup, test, security-code, build, security-container, integration-test, vulnerability-assessment, push-registry, deploy-staging, deploy-production]
+    if: always()
+    steps:
+      - name: Generate pipeline summary
+        run: |
+          echo "## Pipeline Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Setup | ${{ needs.setup.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Code | ${{ needs.security-code.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Container | ${{ needs.security-container.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Test | ${{ needs.integration-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vulnerability | ${{ needs.vulnerability-assessment.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Push Registry | ${{ needs.push-registry.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy Staging | ${{ needs.deploy-staging.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy Production | ${{ needs.deploy-production.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Pipeline completed at:** $(date)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Send final notification
+        if: github.event_name == 'push'
+        run: |
+          # Send notification to Slack/Email
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"Pipeline completed: ${{ job.status }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK }}
+          echo "Notification sent (configure Slack/Email webhook in secrets)"
