@@ -1,6 +1,7 @@
 # =============================================================================
 # CI/CD Pipeline for Data Science Jupyter Environment
 # =============================================================================
+# Trigger pipeline
 # This workflow automates the entire CI/CD process from code commit to deployment
 #
 # Pipeline Stages:
