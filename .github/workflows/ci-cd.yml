@@ -683,6 +683,11 @@ jobs:
     needs: [setup, test, security-code, build, security-container, integration-test, vulnerability-assessment, push-registry, deploy-staging, deploy-production]
     if: always()
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Generate pipeline summary
         run: |
           echo "## Pipeline Execution Summary" >> $GITHUB_STEP_SUMMARY
