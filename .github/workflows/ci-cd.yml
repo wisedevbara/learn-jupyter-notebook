@@ -161,8 +161,7 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          pip install pytest pytest-cov pytest-xdist pytest-ipynb nbqa pylint
-          pip install -r requirements/dev.txt || true
+          pip install pytest pytest-cov pytest-xdist nbqa pylint || true
 
       - name: Create test configuration
         run: |
