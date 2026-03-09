@@ -713,7 +713,6 @@ jobs:
         run: |
           # Get commit message
           COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          AUTHOR=$(git log -1 --pretty=format:"%an")
           
           # Determine emoji based on pipeline status
           STATUS_EMOJI="❌"
@@ -721,98 +720,104 @@ jobs:
             STATUS_EMOJI="✅"
           fi
 
+          # Build JSON payload
+          PAYLOAD=$(cat <<EOF
+          {
+            "text": "$STATUS_EMOJI CI/CD Pipeline - ${{ needs.notify.result }}",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "$STATUS_EMOJI CI/CD Pipeline - ${{ needs.notify.result }}"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Push Details:*"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\n${{ github.repository }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n${{ github.ref_name }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n${{ github.sha }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Author:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Commit Message:*\n$COMMIT_MSG"
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Pipeline Stages:*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "• Setup: ${{ needs.setup.result }}\n• Test: ${{ needs.test.result }}\n• Security Code: ${{ needs.security-code.result }}\n• Build: ${{ needs.build.result }}\n• Security Container: ${{ needs.security-container.result }}\n• Integration Test: ${{ needs.integration-test.result }}\n• Vulnerability: ${{ needs.vulnerability-assessment.result }}\n• Push Registry: ${{ needs.push-registry.result }}"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Workflow"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Commit"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
           # Send notification to Slack
           curl -X POST -H 'Content-type: application/json' \
-            --data '{
-              "text": "$STATUS_EMOJI CI/CD Pipeline Result",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "$STATUS_EMOJI CI/CD Pipeline - ${{ needs.notify.result }}"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Push Details:*"
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Repository:*\n${{ github.repository }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\n${{ github.ref_name }}"
-                    }
-                  ]
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Commit:*\n${{ github.sha }}"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Author:*\n${{ github.actor }}"
-                    }
-                  ]
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Commit Message:*\n$COMMIT_MSG"
-                  }
-                },
-                {
-                  "type": "divider"
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Pipeline Stages:*"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "• Setup: ${{ needs.setup.result }}\n• Test: ${{ needs.test.result }}\n• Security Code: ${{ needs.security-code.result }}\n• Build: ${{ needs.build.result }}\n• Security Container: ${{ needs.security-container.result }}\n• Integration Test: ${{ needs.integration-test.result }}\n• Vulnerability: ${{ needs.vulnerability-assessment.result }}\n• Push Registry: ${{ needs.push-registry.result }}"
-                  }
-                },
-                {
-                  "type": "actions",
-                  "elements": [
-                    {
-                      "type": "button",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "View Workflow"
-                      },
-                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                    },
-                    {
-                      "type": "button",
-                      "text": {
-                        "type": "plain_text",
-                        "text": "View Commit"
-                      },
-                      "url": "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}"
-                    }
-                  ]
-                }
-              ]
-            }' \
+            --data "$PAYLOAD" \
             ${{ secrets.SLACK_WEBHOOK_URL }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
