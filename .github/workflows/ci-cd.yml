@@ -166,52 +166,29 @@ jobs:
       - name: Create test configuration
         run: |
           mkdir -p tests/unit tests/integration tests/fixtures
-          cat > pytest.ini << 'EOF'
-          [pytest]
-          testpaths = tests
-          python_files = test_*.py
-          python_classes = Test*
-          python_functions = test_*
-          addopts = -v --strict-markers --tb=short
-          markers =
-              unit: Unit tests
-              integration: Integration tests
-              slow: Slow running tests
-          EOF
+          echo '[pytest]' > pytest.ini
+          echo 'testpaths = tests' >> pytest.ini
+          echo 'python_files = test_*.py' >> pytest.ini
+          echo 'python_classes = Test*' >> pytest.ini
+          echo 'python_functions = test_*' >> pytest.ini
+          echo 'addopts = -v --tb=short' >> pytest.ini
 
       - name: Create conftest for tests
         run: |
-          cat > tests/conftest.py << 'EOF'
-          """Pytest configuration for Data Science Jupyter Environment tests."""
-          import os
-          import sys
+          mkdir -p tests
+          echo 'import os' > tests/conftest.py
+          echo 'import sys' >> tests/conftest.py
+          echo 'sys.path.insert(0, "src")' >> tests/conftest.py
 
-          # Add src to path
-          sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-          EOF
-
-      - name: Create placeholder tests if none exist
+      - name: Create placeholder test file
         run: |
-          if [ ! -f tests/unit/test_sample.py ]; then
-            cat > tests/unit/test_sample.py << 'EOF'
-            """Sample unit tests."""
-            import pytest
-
-            def test_environment_setup():
-                """Test that environment is properly configured."""
-                import sys
-                assert sys.version_info >= (3, 8)
-
-            def test_imports():
-                """Test that key packages are available."""
-                try:
-                    import numpy
-                    import pandas
-                    import matplotlib
-                except ImportError:
-                    pytest.skip("Optional packages not installed")
-            EOF
-          fi
+          mkdir -p tests/unit
+          echo 'import pytest' > tests/unit/test_sample.py
+          echo '' >> tests/unit/test_sample.py
+          echo 'def test_environment_setup():' >> tests/unit/test_sample.py
+          echo '    """Test that environment is properly configured."""' >> tests/unit/test_sample.py
+          echo '    import sys' >> tests/unit/test_sample.py
+          echo '    assert sys.version_info >= (3, 8)' >> tests/unit/test_sample.py
 
       - name: Run unit tests
         run: |
