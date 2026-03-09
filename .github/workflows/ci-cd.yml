@@ -520,7 +520,6 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/jupyter-datascience
           tags: |
             type=ref,event=branch
             type=sha,prefix={{branch}}-
