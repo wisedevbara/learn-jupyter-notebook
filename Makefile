@@ -12,6 +12,21 @@ RED := \033[0;31m
 NC := \033[0m # No Color
 
 # =============================================================================
+# Git Commands
+daily-push:
+	@echo "🚀 Running daily git push..."
+	@bash script/daily-push.sh
+
+daily-push-msg:
+	@echo "🚀 Running daily git push with custom message..."
+	@bash script/daily-push.sh "$(MSG)"
+
+git-status:
+	git status
+
+git-log:
+	git log --oneline -10
+
 # Docker Commands
 # =============================================================================
 
