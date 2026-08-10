@@ -129,3 +129,5 @@ We use [SemVer](http://semver.org/) for versioning.
 ## Contact
 
 Untuk pertanyaan atau kontribusi, silakan buat issue di repository.
+## 2026-08-10
+- chore: refresh changelog
