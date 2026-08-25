@@ -149,3 +149,6 @@ Untuk pertanyaan atau kontribusi, silakan buat issue di repository.
 
 ## 2026-08-21
 - chore: refresh changelog
+
+## 2026-08-25
+- chore: refresh changelog
