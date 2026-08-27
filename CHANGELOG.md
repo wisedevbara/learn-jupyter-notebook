@@ -152,3 +152,6 @@ Untuk pertanyaan atau kontribusi, silakan buat issue di repository.
 
 ## 2026-08-25
 - chore: refresh changelog
+
+## 2026-08-27
+- docs: log activity entry
